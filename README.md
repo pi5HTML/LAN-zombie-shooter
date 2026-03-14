@@ -18,37 +18,53 @@ install 2 more python libraries (this is very important, it reduces lag spikes):
 install the game: git clone https://github.com/pi5HTML/LAN-zombie-shooter
 
 
+
 go into the folder that was just made: cd LAN-zombie-shooter
+
 
 
 create the file that tells it to alway run: sudo nano /etc/systemd/system/zombie.service
 
 
+
 past this in and change user name to the user name you set when flashing the OS: 
+
 [Unit]
+
 Description=LAN Zombie Shooter
+
 After=network.target
 
 [Service]
+
 ExecStart=/usr/bin/python3 /home/pi/LAN-zombie-shooter/server.py
+
 WorkingDirectory=/home/pi/LAN-zombie-shooter
+
 Restart=always
+
 RestartSec=3
+
 User= <-- change this to you user, no space bettween the = and the start of your username
 
 [Install]
+
 WantedBy=multi-user.target
 
 ^last line^ do not copy this or anything under
 
 
+
 then hit control+o enter then control+x (save and exit) 
+
 
 
 then reload all files so it can read it: sudo systemctl daemon-reload
 
 
+
 then enable it: sudo systemctl enable zombie
+
 
 
 and run it: sudo systemctl start zombie
