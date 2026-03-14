@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ZombieWave</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; user-select: none; }
+  body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+  canvas { display: block; }
+
+  #ui { position: fixed; top: 0; left: 0; width: 100%; pointer-events: none; z-index: 10; }
+  #hud { display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 16px; }
+  #health-bar-wrap { width: 180px; }
+  #health-label { color: #fff; font-size: 11px; margin-bottom: 4px; letter-spacing: 1px; }
+  #health-bar { height: 10px; background: #333; border-radius: 4px; overflow: hidden; }
+  #health-fill { height: 100%; background: #e74c3c; width: 100%; transition: width 0.2s; border-radius: 4px; }
+  #wave-info { text-align: center; color: #fff; }
+  #wave-num { font-size: 20px; font-weight: bold; letter-spacing: 2px; }
+  #wave-sub { font-size: 10px; color: #aaa; letter-spacing: 1px; }
+  #money-wrap { text-align: right; color: #f1c40f; font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+  #gun-wrap { text-align: right; color: #aaa; font-size: 11px; margin-top: 4px; letter-spacing: 1px; }
+
+  #wave-banner { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    color: #fff; font-size: 48px; font-weight: bold; letter-spacing: 4px;
+    text-shadow: 0 0 30px #e74c3c; opacity: 0; pointer-events: none;
+    transition: opacity 0.4s; z-index: 20; text-align: center; }
+  #wave-banner.show { opacity: 1; }
+
+  #countdown-display { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; pointer-events: none; z-index: 19; display: none; }
+  #countdown-label { color: #aaa; font-size: 13px; letter-spacing: 3px; margin-bottom: 8px; }
+  #countdown-num { color: #f1c40f; font-size: 72px; font-weight: bold;
+    text-shadow: 0 0 30px #f1c40f; letter-spacing: 4px; }
+
+  #shop-ui { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: #111; border: 2px solid #e74c3c; border-radius: 12px;
+    padding: 24px; width: 340px; max-width: 92vw; z-index: 30;
+    display: none; pointer-events: all; }
+  #shop-ui h2 { color: #e74c3c; text-align: center; margin-bottom: 16px; letter-spacing: 3px; font-size: 18px; }
+  .shop-item { display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; margin-bottom: 8px; background: #1a1a1a;
+    border-radius: 8px; border: 1px solid #333; }
+  .shop-item.owned { border-color: #27ae60; opacity: 0.6; }
+  .shop-item.cant-afford { opacity: 0.4; }
+  .shop-item-name { color: #fff; font-size: 13px; font-weight: bold; }
+  .shop-item-desc { color: #888; font-size: 10px; margin-top: 2px; }
+  .shop-buy-btn { background: #e74c3c; color: #fff; border: none; border-radius: 6px;
+    padding: 6px 14px; font-size: 12px; cursor: pointer; font-family: inherit; font-weight: bold; }
+  .shop-buy-btn:disabled { background: #444; cursor: default; }
+  #shop-close { width: 100%; margin-top: 12px; background: #333; color: #fff;
+    border: none; border-radius: 8px; padding: 10px; cursor: pointer;
+    font-family: inherit; font-size: 13px; letter-spacing: 1px; }
+
+  #name-screen { position: fixed; inset: 0; background: #0a0a0a;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 100; }
+  #name-screen h1 { color: #e74c3c; font-size: 42px; letter-spacing: 6px; margin-bottom: 8px; text-align: center; }
+  #name-screen p { color: #666; font-size: 12px; letter-spacing: 2px; margin-bottom: 32px; }
+  #name-input { background: #1a1a1a; border: 2px solid #e74c3c; border-radius: 8px;
+    color: #fff; font-size: 18px; padding: 12px 20px; text-align: center;
+    font-family: inherit; width: 260px; margin-bottom: 16px; outline: none; }
+  #name-btn { background: #e74c3c; color: #fff; border: none; border-radius: 8px;
+    padding: 12px 40px; font-size: 16px; cursor: pointer; font-family: inherit;
+    letter-spacing: 2px; font-weight: bold; }
+
+  #mobile-controls { display: none; position: fixed; bottom: 0; left: 0; width: 100%;
+    height: 220px; pointer-events: none; z-index: 15; }
+  #joystick-zone { position: absolute; bottom: 30px; left: 30px;
+    width: 140px; height: 140px; pointer-events: all; }
+  #joystick-base { width: 140px; height: 140px; background: rgba(255,255,255,0.07);
+    border: 2px solid rgba(255,255,255,0.25); border-radius: 50%; position: relative; }
+  #joystick-stick { width: 54px; height: 54px; background: rgba(255,255,255,0.35);
+    border: 2px solid rgba(255,255,255,0.6); border-radius: 50%;
+    position: absolute; top: 43px; left: 43px; pointer-events: none; }
+  #shop-btn-mobile { position: absolute; bottom: 150px; right: 44px; width: 60px; height: 60px;
+    background: rgba(241,196,15,0.75); border: 2px solid #f1c40f; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; color: #111;
+    font-size: 10px; font-weight: bold; pointer-events: all;
+    -webkit-tap-highlight-color: transparent; opacity: 0.4; z-index: 16; }
+
+  #aim-overlay { display: none; position: fixed; inset: 0; z-index: 13; pointer-events: all; }
+  #aim-dot { position: fixed; width: 20px; height: 20px;
+    border: 2px solid rgba(255,255,255,0.7); border-radius: 50%;
+    pointer-events: none; z-index: 17; display: none;
+    transform: translate(-50%, -50%); }
+  #aim-dot::after { content:''; position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%); width:4px; height:4px;
+    background:#fff; border-radius:50%; }
+
+  #gun-selector { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; z-index: 16; pointer-events: all; }
+  .gun-slot { width: 44px; height: 44px; background: rgba(0,0,0,0.6);
+    border: 2px solid #444; border-radius: 8px; display: flex; align-items: center;
+    justify-content: center; color: #aaa; font-size: 8px; text-align: center;
+    cursor: pointer; transition: border-color 0.15s; line-height: 1.2; padding: 2px; }
+  .gun-slot.active { border-color: #e74c3c; color: #fff; }
+  .gun-slot.locked { opacity: 0.25; cursor: default; }
+
+  #shop-prompt { position: fixed; top: 45%; left: 50%; transform: translate(-50%,-50%);
+    color: #f1c40f; font-size: 14px; letter-spacing: 2px; pointer-events: none;
+    z-index: 10; display: none; text-shadow: 0 0 10px #f1c40f; }
+</style>
+</head>
+<body>
+
+<div id="name-screen">
+  <h1>ZOMBIE<br>WAVE</h1>
+  <p>LAN MULTIPLAYER</p>
+  <input id="name-input" maxlength="16" placeholder="YOUR NAME" autocomplete="off" spellcheck="false">
+  <button id="name-btn">JOIN</button>
+</div>
+
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <div id="hud">
+    <div id="health-bar-wrap">
+      <div id="health-label">HEALTH</div>
+      <div id="health-bar"><div id="health-fill"></div></div>
+    </div>
+    <div id="wave-info">
+      <div id="wave-num">WAVE 0</div>
+      <div id="wave-sub">WAITING...</div>
+    </div>
+    <div>
+      <div id="money-wrap">$0</div>
+      <div id="gun-wrap">PISTOL</div>
+    </div>
+  </div>
+</div>
+
+<div id="wave-banner"></div>
+<div id="countdown-display">
+  <div id="countdown-label">NEXT WAVE IN</div>
+  <div id="countdown-num">15</div>
+</div>
+<div id="shop-prompt">[ E ] SHOP</div>
+<div id="aim-dot"></div>
+
+<div id="shop-ui">
+  <h2>🔫 SHOP</h2>
+  <div id="shop-items"></div>
+  <button id="shop-close">CLOSE</button>
+</div>
+
+<div id="mobile-controls">
+  <div id="joystick-zone">
+    <div id="joystick-base">
+      <div id="joystick-stick"></div>
+    </div>
+  </div>
+  <div id="shop-btn-mobile">SHOP</div>
+</div>
+
+<div id="aim-overlay"></div>
+<div id="gun-selector"></div>
+
+<script>
+const GUNS = {
+  pistol:  { name:"PISTOL",  damage:25,  fireRate:400,  bullet:1, spread:0,    price:0,    color:"#fff",    desc:"Reliable sidearm" },
+  shotgun: { name:"SHOTGUN", damage:40,  fireRate:900,  bullet:6, spread:0.35, price:500,  color:"#e67e22", desc:"Wide spread, close range" },
+  smg:     { name:"SMG",     damage:15,  fireRate:120,  bullet:1, spread:0.08, price:750,  color:"#3498db", desc:"Fast fire rate" },
+  ar:      { name:"AR",      damage:35,  fireRate:220,  bullet:1, spread:0.04, price:1000, color:"#2ecc71", desc:"Balanced all-rounder" },
+  sniper:  { name:"SNIPER",  damage:200, fireRate:1400, bullet:1, spread:0,    price:1500, color:"#9b59b6", desc:"One shot, long range" },
+  minigun: { name:"MINIGUN", damage:12,  fireRate:80,   bullet:1, spread:0.12, price:2500, color:"#e74c3c", desc:"Spin up, then mayhem" },
+  rocket:  { name:"ROCKET",  damage:300, fireRate:2000, bullet:1, spread:0,    price:3500, color:"#f1c40f", desc:"Splash damage, boss melter" },
+};
+
+const MAP_W = 3000, MAP_H = 3000, TILE = 64;
+
+let socket, myId, myName;
+let camX = 0, camY = 0;
+let players = {}, zombies = {}, projectiles = [];
+let myHealth = 100, myMoney = 0, myGun = "pistol", myGuns = ["pistol"];
+let currentWave = 0, countdown = 0;
+let mouseX = 0, mouseY = 0, mouseDown = false;
+let keys = {};
+let lastShot = 0, minigunSpinning = false, minigunStartTime = 0;
+let shopOpen = false, nearShop = false;
+let shopPos = {x:300,y:2700}, playerSpawn = {x:300,y:2800};
+let myPos = {x:300,y:2800};
+let myAngle = 0;
+let localBullets = [], bulletId = 0;
+let isMobile = false;
+let jDx = 0, jDy = 0, jBaseX = 0, jBaseY = 0;
+let aimTouchId = null, aimTouching = false;
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+resize();
+window.addEventListener("resize", resize);
+
+document.addEventListener("gesturestart",  e => e.preventDefault(), {passive:false});
+document.addEventListener("gesturechange", e => e.preventDefault(), {passive:false});
+document.addEventListener("gestureend",    e => e.preventDefault(), {passive:false});
+window.addEventListener("wheel", e => { if(e.ctrlKey) e.preventDefault(); }, {passive:false});
+document.addEventListener("touchmove", e => { if(e.touches.length>1) e.preventDefault(); }, {passive:false});
+
+const walls = [
+  {x:0,y:0,w:3000,h:32},{x:0,y:2968,w:3000,h:32},
+  {x:0,y:0,w:32,h:3000},{x:2968,y:0,w:32,h:3000},
+  {x:200,y:400,w:600,h:32},{x:1000,y:400,w:800,h:32},
+  {x:200,y:800,w:400,h:32},{x:800,y:800,w:600,h:32},
+  {x:1600,y:600,w:32,h:500},{x:1800,y:400,w:700,h:32},
+  {x:2200,y:600,w:32,h:400},{x:600,y:200,w:32,h:500},
+  {x:1200,y:200,w:32,h:300},{x:400,y:1000,w:32,h:400},
+  {x:800,y:1000,w:32,h:300},{x:200,y:1200,w:700,h:32},
+  {x:1100,y:1000,w:600,h:32},{x:1800,y:1000,w:32,h:600},
+  {x:2000,y:1200,w:500,h:32},{x:2400,y:1000,w:32,h:500},
+  {x:200,y:1600,w:500,h:32},{x:900,y:1400,w:32,h:500},
+  {x:1100,y:1600,w:600,h:32},{x:1800,y:1600,w:32,h:400},
+  {x:2000,y:1600,w:700,h:32},{x:2400,y:1600,w:32,h:400},
+  {x:200,y:2000,w:400,h:32},{x:800,y:2000,w:600,h:32},
+  {x:1600,y:1800,w:32,h:400},{x:2000,y:2000,w:500,h:32},
+  {x:1200,y:2200,w:32,h:400},{x:400,y:2400,w:600,h:32},
+  {x:1400,y:2400,w:700,h:32},{x:2200,y:2200,w:32,h:500},
+  {x:100,y:2600,w:300,h:32},{x:500,y:2600,w:200,h:32},
+];
+
+function wallsCollide(x, y, r) {
+  for(const w of walls) {
+    const nx = Math.max(w.x, Math.min(x, w.x+w.w));
+    const ny = Math.max(w.y, Math.min(y, w.y+w.h));
+    if(Math.hypot(x-nx, y-ny) < r) return true;
+  }
+  return false;
+}
+
+function bulletHitsWall(x, y) {
+  for(const w of walls) {
+    if(x>=w.x && x<=w.x+w.w && y>=w.y && y<=w.y+w.h) return true;
+  }
+  return false;
+}
+
+function joinGame() {
+  myName = document.getElementById("name-input").value.trim() || "Player";
+  document.getElementById("name-screen").style.display = "none";
+  isMobile = ('ontouchstart' in window)||(navigator.maxTouchPoints>0);
+  if(isMobile) {
+    document.getElementById("mobile-controls").style.display = "block";
+    document.getElementById("aim-overlay").style.display = "block";
+  }
+  connectSocket();
+  buildGunSelector();
+  requestAnimationFrame(gameLoop);
+}
+document.getElementById("name-btn").onclick = joinGame;
+document.getElementById("name-input").addEventListener("keydown", e => { if(e.key==="Enter") joinGame(); });
+
+function connectSocket() {
+  socket = io();
+  socket.on("your_id", data => {
+    myId = data.id; shopPos = data.shop; playerSpawn = data.spawn;
+    myPos = {...playerSpawn};
+    socket.emit("set_name", {name: myName});
+  });
+  socket.on("game_state", data => {
+    players = data.players||{}; zombies = data.zombies||{};
+    projectiles = data.projectiles||[]; currentWave = data.wave||0;
+    countdown = data.countdown||0;
+    document.getElementById("wave-num").textContent = `WAVE ${currentWave}`;
+    const cd = document.getElementById("countdown-display");
+    if(countdown > 0) {
+      cd.style.display = "block";
+      document.getElementById("countdown-num").textContent = countdown;
+    } else {
+      cd.style.display = "none";
+    }
+    if(myId && players[myId]) {
+      myHealth = players[myId].health; myMoney = players[myId].money;
+      myGun = players[myId].gun; myGuns = players[myId].guns||["pistol"];
+      document.getElementById("health-fill").style.width = myHealth+"%";
+      document.getElementById("money-wrap").textContent = "$"+myMoney;
+      document.getElementById("gun-wrap").textContent = GUNS[myGun]?.name||myGun;
+      updateGunSelector();
+    }
+  });
+  socket.on("wave_start", data => {
+    document.getElementById("countdown-display").style.display = "none";
+    showBanner(data.boss?`⚠ BOSS WAVE ${data.wave}`:`WAVE ${data.wave}`, data.boss?"#e74c3c":"#fff");
+    document.getElementById("wave-sub").textContent = data.boss?"BOSS WAVE":"SURVIVE";
+  });
+  socket.on("wave_clear", () => {
+    showBanner("WAVE CLEAR","#2ecc71");
+    document.getElementById("wave-sub").textContent = "SHOP BREAK!";
+  });
+  socket.on("wave_countdown", data => {
+    document.getElementById("countdown-display").style.display = "block";
+    document.getElementById("countdown-num").textContent = data.seconds;
+  });
+  socket.on("kill_reward",  data => { myMoney = data.money; });
+  socket.on("player_died",  data => { if(data.id===myId){ showBanner("YOU DIED","#e74c3c"); myPos={...playerSpawn}; }});
+  socket.on("buy_success",  data => { myGuns=data.guns; myGun=data.gun; myMoney=data.money; buildGunSelector(); updateGunSelector(); closeShop(); });
+  socket.on("server_idle",  ()   => { myPos={...playerSpawn}; currentWave=0; players={}; zombies={}; projectiles=[]; });
+}
+
+let bannerTimeout;
+function showBanner(text, color="#fff") {
+  const b = document.getElementById("wave-banner");
+  b.textContent=text; b.style.color=color;
+  b.style.textShadow=`0 0 30px ${color}`;
+  b.classList.add("show");
+  clearTimeout(bannerTimeout);
+  bannerTimeout = setTimeout(()=>b.classList.remove("show"),2500);
+}
+
+function buildGunSelector() {
+  const wrap = document.getElementById("gun-selector");
+  wrap.innerHTML = "";
+  Object.entries(GUNS).forEach(([key,g]) => {
+    const slot = document.createElement("div");
+    slot.className = "gun-slot"+(myGuns.includes(key)?"":" locked");
+    slot.dataset.gun = key;
+    slot.textContent = g.name;
+    if(myGuns.includes(key)) {
+      slot.addEventListener("touchstart", e=>{e.preventDefault();e.stopPropagation();myGun=key;socket?.emit("player_update",{pos:myPos,angle:myAngle,gun:myGun});updateGunSelector();},{passive:false});
+      slot.onclick = ()=>{myGun=key;socket?.emit("player_update",{pos:myPos,angle:myAngle,gun:myGun});updateGunSelector();};
+    }
+    wrap.appendChild(slot);
+  });
+  updateGunSelector();
+}
+function updateGunSelector() {
+  document.querySelectorAll(".gun-slot").forEach(el=>{
+    el.classList.toggle("active",  el.dataset.gun===myGun);
+    el.classList.toggle("locked", !myGuns.includes(el.dataset.gun));
+  });
+}
+
+function openShop() {
+  if(shopOpen) return;
+  shopOpen = true;
+  const wrap = document.getElementById("shop-items");
+  wrap.innerHTML = "";
+  Object.entries(GUNS).forEach(([key,g]) => {
+    if(key==="pistol") return;
+    const owned=myGuns.includes(key), canAfford=myMoney>=g.price;
+    const div = document.createElement("div");
+    div.className = "shop-item"+(owned?" owned":(!canAfford?" cant-afford":""));
+    div.innerHTML = `
+      <div>
+        <div class="shop-item-name" style="color:${g.color}">${g.name}</div>
+        <div class="shop-item-desc">${g.desc}</div>
+      </div>
+      <button class="shop-buy-btn" ${owned||!canAfford?"disabled":""} data-gun="${key}">
+        ${owned?"OWNED":"$"+g.price}
+      </button>`;
+    if(!owned&&canAfford) div.querySelector("button").onclick=()=>socket.emit("buy_gun",{gun:key});
+    wrap.appendChild(div);
+  });
+  document.getElementById("shop-ui").style.display = "block";
+}
+function closeShop() { shopOpen=false; document.getElementById("shop-ui").style.display="none"; }
+document.getElementById("shop-close").onclick = closeShop;
+document.getElementById("shop-btn-mobile").addEventListener("touchstart", e=>{
+  e.preventDefault(); e.stopPropagation();
+  if(nearShop) openShop();
+},{passive:false});
+
+document.addEventListener("keydown", e=>{
+  keys[e.code]=true;
+  if(e.code==="KeyE"&&nearShop&&!shopOpen) openShop();
+  if(e.code==="Escape") closeShop();
+  const nums=["Digit1","Digit2","Digit3","Digit4","Digit5","Digit6","Digit7"];
+  const idx=nums.indexOf(e.code);
+  if(idx>=0&&myGuns.includes(Object.keys(GUNS)[idx])){myGun=Object.keys(GUNS)[idx];updateGunSelector();}
+});
+document.addEventListener("keyup", e=>{ keys[e.code]=false; });
+
+document.addEventListener("mousemove", e=>{
+  mouseX=e.clientX; mouseY=e.clientY;
+  const screenPX = myPos.x-camX;
+  const screenPY = myPos.y-camY;
+  myAngle = Math.atan2(mouseY-screenPY, mouseX-screenPX);
+});
+document.addEventListener("mousedown", e=>{ if(e.button===0&&!shopOpen) mouseDown=true; });
+document.addEventListener("mouseup",   e=>{ if(e.button===0) mouseDown=false; });
+
+const jZone  = document.getElementById("joystick-zone");
+const jStick = document.getElementById("joystick-stick");
+jZone.addEventListener("touchstart", e=>{
+  e.preventDefault(); e.stopPropagation();
+  const t=e.changedTouches[0];
+  const rect=jZone.getBoundingClientRect();
+  jBaseX=rect.left+rect.width/2; jBaseY=rect.top+rect.height/2;
+  moveJoystick(t.clientX,t.clientY);
+},{passive:false});
+jZone.addEventListener("touchmove", e=>{
+  e.preventDefault(); e.stopPropagation();
+  moveJoystick(e.changedTouches[0].clientX,e.changedTouches[0].clientY);
+},{passive:false});
+jZone.addEventListener("touchend", e=>{
+  e.preventDefault(); jDx=0; jDy=0;
+  jStick.style.left="43px"; jStick.style.top="43px";
+},{passive:false});
+function moveJoystick(cx,cy) {
+  let dx=cx-jBaseX, dy=cy-jBaseY;
+  const d=Math.hypot(dx,dy), max=48;
+  if(d>max){dx=dx/d*max;dy=dy/d*max;}
+  jDx=dx/max; jDy=dy/max;
+  jStick.style.left=(43+dx)+"px"; jStick.style.top=(43+dy)+"px";
+}
+
+const aimOverlay = document.getElementById("aim-overlay");
+const aimDotEl   = document.getElementById("aim-dot");
+aimOverlay.addEventListener("touchstart", e=>{
+  e.preventDefault(); e.stopPropagation();
+  if(shopOpen) return;
+  for(const t of e.changedTouches) {
+    if(aimTouchId===null) {
+      aimTouchId=t.identifier; aimTouching=true;
+      updateAim(t.clientX,t.clientY); break;
+    }
+  }
+},{passive:false});
+aimOverlay.addEventListener("touchmove", e=>{
+  e.preventDefault(); e.stopPropagation();
+  for(const t of e.changedTouches)
+    if(t.identifier===aimTouchId) updateAim(t.clientX,t.clientY);
+},{passive:false});
+aimOverlay.addEventListener("touchend", e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches) {
+    if(t.identifier===aimTouchId) {
+      aimTouchId=null; aimTouching=false;
+      aimDotEl.style.display="none";
+    }
+  }
+},{passive:false});
+function updateAim(x,y) {
+  const screenPX = myPos.x-camX;
+  const screenPY = myPos.y-camY;
+  myAngle = Math.atan2(y-screenPY, x-screenPX);
+  aimDotEl.style.display="block";
+  aimDotEl.style.left=x+"px"; aimDotEl.style.top=y+"px";
+}
+
+function tryShoot() {
+  if(!socket||!myId) return;
+  const g=GUNS[myGun]; if(!g) return;
+  if(myGun==="minigun") {
+    if(!minigunSpinning){minigunSpinning=true;minigunStartTime=Date.now();}
+    if(Date.now()-minigunStartTime<800) return;
+  } else { minigunSpinning=false; }
+  const now=Date.now();
+  if(now-lastShot<g.fireRate) return;
+  lastShot=now;
+  const aDx=Math.cos(myAngle), aDy=Math.sin(myAngle);
+  for(let b=0;b<g.bullet;b++) {
+    const sp=(Math.random()-0.5)*g.spread;
+    const bx=aDx*Math.cos(sp)-aDy*Math.sin(sp);
+    const by=aDx*Math.sin(sp)+aDy*Math.cos(sp);
+    const maxRange=myGun==="sniper"?3000:900;
+
+    // Find wall distance along ray
+    let wallDist=maxRange;
+    for(let i=1;i<=60;i++) {
+      const t=(i/60)*maxRange;
+      const cx=myPos.x+bx*t, cy=myPos.y+by*t;
+      if(bulletHitsWall(cx,cy)){wallDist=t;break;}
+    }
+
+    let hitZombie=null, hitDist=Infinity;
+    for(const [zid,z] of Object.entries(zombies)) {
+      const dzx=z.x-myPos.x, dzy=z.y-myPos.y;
+      const proj=dzx*bx+dzy*by;
+      if(proj<0||proj>wallDist) continue;
+      const perp=Math.abs(dzx*by-dzy*bx);
+      if(perp<(z.type==="boss"?40:20)&&proj<hitDist){hitDist=proj;hitZombie=zid;}
+    }
+
+    bulletId++;
+    localBullets.push({
+      id:bulletId, x:myPos.x, y:myPos.y, dx:bx, dy:by,
+      speed:900, color:g.color, life:1.0,
+      rocket:myGun==="rocket", maxDist:wallDist, dist:0
+    });
+
+    if(hitZombie) {
+      if(myGun==="rocket") {
+        const hx=myPos.x+bx*hitDist, hy=myPos.y+by*hitDist;
+        for(const [zid,z] of Object.entries(zombies))
+          if(Math.hypot(z.x-hx,z.y-hy)<120) socket.emit("shoot",{zid,damage:g.damage});
+      } else {
+        socket.emit("shoot",{zid:hitZombie,damage:g.damage});
+      }
+    }
+  }
+}
+
+const SPEED=180;
+let lastUpdate=0;
+function updateMovement(dt) {
+  if(!myId) return;
+  let dx=0, dy=0;
+  if(!isMobile) {
+    if(keys["KeyW"]||keys["ArrowUp"])    dy-=1;
+    if(keys["KeyS"]||keys["ArrowDown"])  dy+=1;
+    if(keys["KeyA"]||keys["ArrowLeft"])  dx-=1;
+    if(keys["KeyD"]||keys["ArrowRight"]) dx+=1;
+  } else {
+    dx=jDx; dy=jDy;
+  }
+  const mag=Math.hypot(dx,dy);
+  if(mag>0){dx/=mag;dy/=mag;}
+  const nx=myPos.x+dx*SPEED*dt;
+  const ny=myPos.y+dy*SPEED*dt;
+  if(!wallsCollide(nx,myPos.y,14)) myPos.x=Math.max(16,Math.min(MAP_W-16,nx));
+  if(!wallsCollide(myPos.x,ny,14)) myPos.y=Math.max(16,Math.min(MAP_H-16,ny));
+
+  const dShop=Math.hypot(myPos.x-shopPos.x,myPos.y-shopPos.y);
+  nearShop=dShop<80;
+  document.getElementById("shop-prompt").style.display=nearShop&&!shopOpen&&!isMobile?"block":"none";
+  document.getElementById("shop-btn-mobile").style.opacity=nearShop?"1":"0.4";
+
+  const now=Date.now();
+  if(now-lastUpdate>50){
+    lastUpdate=now;
+    socket?.emit("player_update",{pos:myPos,angle:myAngle,gun:myGun});
+  }
+}
+
+function drawMap() {
+  ctx.fillStyle="#1a1a1a"; ctx.fillRect(0,0,MAP_W,MAP_H);
+  ctx.strokeStyle="#222"; ctx.lineWidth=1;
+  for(let x=0;x<MAP_W;x+=TILE){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,MAP_H);ctx.stroke();}
+  for(let y=0;y<MAP_H;y+=TILE){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(MAP_W,y);ctx.stroke();}
+  ctx.fillStyle="rgba(46,204,113,0.04)"; ctx.fillRect(0,2400,MAP_W,600);
+  ctx.fillStyle="rgba(231,76,60,0.04)";  ctx.fillRect(0,0,MAP_W,600);
+  ctx.fillStyle="#444"; ctx.strokeStyle="#666"; ctx.lineWidth=2;
+  for(const w of walls){ctx.fillRect(w.x,w.y,w.w,w.h);ctx.strokeRect(w.x,w.y,w.w,w.h);}
+  ctx.fillStyle="#f1c40f"; ctx.strokeStyle="#e67e22"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.roundRect(shopPos.x-24,shopPos.y-24,48,48,6); ctx.fill(); ctx.stroke();
+  ctx.fillStyle="#111"; ctx.font="bold 20px Courier New";
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.fillText("$",shopPos.x,shopPos.y);
+}
+
+function drawPlayer(p,isMe) {
+  const x=p.pos?.x??p.x, y=p.pos?.y??p.y, angle=p.angle||0, g=GUNS[p.gun||"pistol"];
+  ctx.save(); ctx.translate(x,y); ctx.rotate(angle);
+  ctx.fillStyle=isMe?"#3498db":"#2980b9"; ctx.strokeStyle=isMe?"#fff":"#aaa"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(0,0,14,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle=g?.color||"#fff"; ctx.fillRect(8,-3,18,6);
+  ctx.restore();
+  ctx.fillStyle=isMe?"#3498db":"#aaa"; ctx.font="11px Courier New";
+  ctx.textAlign="center"; ctx.textBaseline="bottom";
+  ctx.fillText(p.name||"Player",x,y-18);
+  if(!isMe){
+    ctx.fillStyle="#333"; ctx.fillRect(x-14,y-30,28,4);
+    ctx.fillStyle="#2ecc71"; ctx.fillRect(x-14,y-30,28*(p.health/100),4);
+  }
+}
+
+function drawZombie(z) {
+  const boss=z.type==="boss", r=boss?36:18;
+  ctx.save(); ctx.translate(z.x,z.y);
+  ctx.fillStyle="rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(4,6,r,r*0.5,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=boss?"#8e1a1a":"#2d5a1b";
+  ctx.strokeStyle=boss?"#e74c3c":"#5a9e3a"; ctx.lineWidth=boss?3:2;
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle=z.can_see_player?"#e74c3c":"#555";
+  ctx.beginPath();
+  ctx.arc(-r*0.3,-r*0.2,boss?6:3,0,Math.PI*2);
+  ctx.arc( r*0.3,-r*0.2,boss?6:3,0,Math.PI*2); ctx.fill();
+  if(boss){ctx.fillStyle="#fff";ctx.font="bold 10px Courier New";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("BOSS",0,r+12);}
+  ctx.restore();
+  const hw=boss?60:30, hh=boss?6:4, hp=z.health/z.max_health;
+  ctx.fillStyle="#222"; ctx.fillRect(z.x-hw/2,z.y-r-14,hw,hh);
+  ctx.fillStyle=hp>0.5?"#2ecc71":hp>0.25?"#f1c40f":"#e74c3c";
+  ctx.fillRect(z.x-hw/2,z.y-r-14,hw*hp,hh);
+}
+
+function drawBullets(dt) {
+  localBullets = localBullets.filter(b => b.life > 0);
+  for(const b of localBullets) {
+    const step = b.speed*dt;
+    b.dist = (b.dist||0) + step;
+    b.x += b.dx*step;
+    b.y += b.dy*step;
+    // Stop at wall or max distance
+    if(b.dist >= b.maxDist || bulletHitsWall(b.x, b.y)) {
+      b.life = 0;
+      continue;
+    }
+    b.life -= dt*2;
+    if(b.rocket) {
+      ctx.fillStyle="#f1c40f"; ctx.beginPath(); ctx.arc(b.x,b.y,6,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="rgba(241,196,15,0.4)"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.dx*20,b.y-b.dy*20); ctx.stroke();
+    } else {
+      ctx.fillStyle=b.color; ctx.globalAlpha=Math.max(0,b.life);
+      ctx.fillRect(b.x-3,b.y-1.5,10,3); ctx.globalAlpha=1;
+    }
+  }
+}
+
+function bulletHitsWall(x,y) {
+  for(const w of walls)
+    if(x>=w.x&&x<=w.x+w.w&&y>=w.y&&y<=w.y+w.h) return true;
+  return false;
+}
+
+function drawServerProjectiles() {
+  for(const p of projectiles) {
+    ctx.fillStyle="#e74c3c"; ctx.strokeStyle="#ff6b6b"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(p.x,p.y,7,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="rgba(231,76,60,0.3)"; ctx.beginPath(); ctx.arc(p.x,p.y,14,0,Math.PI*2); ctx.fill();
+  }
+}
+
+let lastFrame=0;
+function gameLoop(ts) {
+  const dt=Math.min((ts-lastFrame)/1000,0.05);
+  lastFrame=ts;
+  updateMovement(dt);
+  if((mouseDown||aimTouching)&&!shopOpen) tryShoot();
+
+  const tcx=myPos.x-canvas.width/2;
+  const tcy=myPos.y-canvas.height/2;
+  camX+=(tcx-camX)*0.12;
+  camY+=(tcy-camY)*0.12;
+  camX=Math.max(0,Math.min(MAP_W-canvas.width,  camX));
+  camY=Math.max(0,Math.min(MAP_H-canvas.height, camY));
+
+  ctx.fillStyle="#0a0a0a"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save(); ctx.translate(-camX,-camY);
+  drawMap(); drawServerProjectiles(); drawBullets(dt);
+  for(const [id,p] of Object.entries(players)) if(id!==myId) drawPlayer(p,false);
+  for(const z of Object.values(zombies)) drawZombie(z);
+  if(myId) drawPlayer({pos:myPos,angle:myAngle,gun:myGun,name:myName,health:myHealth},true);
+  ctx.restore();
+  requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>
